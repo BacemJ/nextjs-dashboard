@@ -28,7 +28,7 @@ const FormSchema = z.object(
     date: z.string(),
   }
 );
-const UpdateInvoice = FormSchema.omit({ id: true, date: true });
+const UpdateInvoice = FormSchema.omit({  date: true });
 const CreateInvoice = FormSchema.omit({ id: true, date: true });
 export type State = {
   errors?: {
@@ -77,29 +77,44 @@ export async function createInvoice(prevState: State, formData: FormData){
   revalidatePath('/dashboard/invoices');
   redirect('/dashboard/invoices');
 }
-export async function updateInvoice(id: string, formData: FormData) {
-  const { customerId, amount, status } = UpdateInvoice.parse(
+ export async function updateInvoice(prevState: State, formData: FormData){
+    const validatedFields = UpdateInvoice.safeParse(
+      {
+        id: formData.get('id'),
+        customerId: formData.get('customerId'),
+        amount: formData.get('amount'),
+        status: formData.get('status'),
+      }
+    );
+
+    // If form validation fails, return errors early. Otherwise, continue.
+    if (!validatedFields.success) 
     {
-      customerId: formData.get('customerId'),
-      amount: formData.get('amount'),
-      status: formData.get('status'),
+      return {
+        errors: validatedFields.error.flatten().fieldErrors,
+        message: 'Wrong Fields. Failed to update Invoice.',
+      };
     }
-  );
-  const amountInCents = amount * 100;
-  try{
-    await sql`
-      UPDATE invoices
-      SET customer_id = ${customerId}, amount = ${amountInCents}, status = ${status}
-      WHERE id = ${id}
-    `;
-  } catch (error) {
-    return {
-      message: 'Database Error: Failed to update invoice.',
-    };
+    // Prepare data for insertion into the database
+    const { id,customerId, amount, status } = validatedFields.data;
+    const amountInCents = amount * 100;
+    try{
+      await sql`
+        UPDATE invoices
+        SET customer_id = ${customerId}, amount = ${amountInCents}, status = ${status}
+        WHERE id = ${id}
+      `;
+    } catch (error) {
+      return {
+        message: 'Database Error: Failed to update invoice.',
+      };
+    }
+    revalidatePath('/dashboard/invoices');
+    redirect('/dashboard/invoices');
   }
-  revalidatePath('/dashboard/invoices');
-  redirect('/dashboard/invoices');
-}
+
+
+
 
 export async function deleteInvoice(id: string) {
   try {
